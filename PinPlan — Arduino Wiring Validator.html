@@ -1,0 +1,176 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>PinPlan — Arduino Wiring Validator</title>
+<style>
+:root{--bg:#f6f7f9;--pn:#fff;--tx:#1c2430;--mu:#667085;--bd:#d9dee5;--ac:#0b7a75;--er:#c0362c;--wr:#b7791f;--in:#2563a8;--ws:#eef2f5;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#11161c;--pn:#1a212a;--tx:#e6ebf1;--mu:#93a0b0;--bd:#2c3642;--ac:#3cc6bd;--er:#ff7b70;--wr:#f0b45a;--in:#6fb0f0;--ws:#0f141a;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#11161c;--pn:#1a212a;--tx:#e6ebf1;--mu:#93a0b0;--bd:#2c3642;--ac:#3cc6bd;--er:#ff7b70;--wr:#f0b45a;--in:#6fb0f0;--ws:#0f141a;color-scheme:dark}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;display:grid;grid-template-rows:auto 1fr;grid-template-columns:150px 1fr 350px;overflow:hidden}
+header{grid-column:1/4;display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--pn);border-bottom:1px solid var(--bd);flex-wrap:wrap}
+header b{font-size:16px;color:var(--ac);margin-right:8px}#st{color:var(--mu);font-size:12px;flex:1;min-width:120px}
+button,select{font:inherit;color:var(--tx);background:var(--pn);border:1px solid var(--bd);border-radius:6px;padding:4px 9px;cursor:pointer}button:hover{border-color:var(--ac)}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ac)}
+aside{background:var(--pn);padding:10px;overflow:auto;border-right:1px solid var(--bd)}aside h3,#side h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu)}aside button{display:block;width:100%;text-align:left;margin-bottom:6px}
+main{background:var(--ws);min-height:0}svg{width:100%;height:100%;display:block;touch-action:none}
+#side{background:var(--pn);border-left:1px solid var(--bd);overflow:auto;padding:10px}#side section{margin-bottom:14px}
+.f{border:1px solid var(--bd);border-left:4px solid var(--in);border-radius:6px;padding:7px 9px;margin-bottom:7px;font-size:12.5px}.f.er{border-left-color:var(--er)}.f.wr{border-left-color:var(--wr)}
+.f .h{font-weight:600}.f .h span{font-size:10px;letter-spacing:.06em;margin-right:4px}.f.er .h span{color:var(--er)}.f.wr .h span{color:var(--wr)}.f.in .h span{color:var(--in)}.f p{margin:3px 0 0;color:var(--mu)}.f p b{color:var(--tx);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:4px}.chip{border:1px solid var(--bd);border-radius:5px;padding:1px 6px;font-size:11px;color:var(--mu)}.chip.on{border-color:var(--ac);color:var(--ac);font-weight:700}
+.pin{stroke:var(--tx);stroke-width:1;cursor:crosshair}.d{fill:#4c8bd6}.a{fill:#46b07a}.p{fill:#e0a030}.g{fill:#888}.on{stroke:var(--ac);stroke-width:2.5}
+.lb{font-size:9px;fill:var(--mu);text-anchor:middle;pointer-events:none}.bl{font-size:22px;font-weight:700;fill:var(--mu);text-anchor:middle;opacity:.5}
+.cb{fill:var(--pn);stroke:var(--tx);stroke-width:1.5;cursor:move}.cb.sel{stroke:var(--ac);stroke-width:3}.t{fill:var(--ac);stroke:var(--pn);stroke-width:2;cursor:crosshair}.t.pd,.pin.pd{stroke:var(--er);stroke-width:3}
+.w{fill:none;stroke:var(--ac);stroke-width:3;cursor:pointer}.w.sel{stroke:var(--wr);stroke-width:4.5}.hint{font-size:13px;fill:var(--mu);text-anchor:middle}
+input[type=number]{width:90px;font:inherit;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:6px;padding:3px 6px}.mu{color:var(--mu);font-size:12px}
+</style></head><body>
+<header><b>PinPlan</b><button id="un">↶ Undo</button><button id="re">↷ Redo</button><select id="ex" aria-label="Load example"></select><button id="exp">Export JSON</button><button id="imp">Import JSON</button><button id="sh">Share link</button><span id="st">Click a terminal, then a board pin (or another terminal) to wire. R rotates, Del removes.</span><input id="fi" type="file" accept=".json" hidden></header>
+<aside><h3>Components</h3><div id="lib"></div><p class="mu">Click to add. Drag to move.</p></aside>
+<main><svg id="sv" viewBox="0 0 600 460" aria-label="Circuit workspace"></svg></main>
+<div id="side"><section><h3>Properties</h3><div id="pr"></div></section><section><h3 id="vh">Validation</h3><div id="vl"></div></section><section><h3>Board pinout (Uno R3)</h3><div class="chips" id="po"></div></section></div>
+<script>
+// ===== Board data (ATmega328P / Uno R3 datasheet figures) =====
+const LIM={pin:20,abs:40,tot:200,usb:500}; // mA: recommended per I/O, absolute max, total across I/O (conservative), USB 5V budget
+const PIN={};
+for(let i=0;i<14;i++){const n=13-i;PIN['D'+n]={x:60+i*38,y:36,k:'d',l:'D'+n,pwm:[3,5,6,9,10,11].includes(n),ser:n<2,top:1}}
+[['3V3','p'],['5V','p'],['GND1','g'],['GND2','g'],['VIN','p']].forEach(([id,k],i)=>PIN[id]={x:60+i*40,y:134,k,l:k=='g'?'GND':id,net:k=='g'?'GND':id});
+for(let i=0;i<6;i++)PIN['A'+i]={x:330+i*40,y:134,k:'a',l:'A'+i};
+const pn=id=>PIN[id].k=='g'?'GND':PIN[id].k=='p'?id:null;
+// ===== Component data =====
+const C={
+ led:{n:'LED',w:60,h:34,t:[['anode',-30,0],['cathode',30,0]],vf:2.0},
+ resistor:{n:'Resistor',w:70,h:24,t:[['a',-35,0],['b',35,0]],p:{ohms:220}},
+ button:{n:'Push button',w:60,h:40,t:[['a',-30,0],['b',30,0]]},
+ pot:{n:'Potentiometer',w:70,h:50,t:[['vcc',-35,12],['wiper',0,-25],['gnd',35,12]]},
+ buzzer:{n:'Buzzer (active)',w:60,h:40,t:[['+',-30,0],['−',30,0]],ma:30},
+ servo:{n:'Micro servo',w:80,h:56,t:[['signal',-40,-14],['vcc',-40,0],['gnd',-40,14]],vmin:4.8,vmax:6,stall:650}
+};
+// ===== Validation engine (pure: model in, findings out) =====
+function validate(M){
+ const F=[],P={},f=x=>P[x]===undefined?x:(P[x]=f(P[x])),u=(a,b)=>{a=f(a);b=f(b);if(a!=b)P[a]=b};
+ const K=e=>e.p?(PIN[e.p].net||e.p):e.c+':'+e.t,used=new Set();
+ M.wires.forEach(w=>{u(K(w.a),K(w.b));used.add(K(w.a));used.add(K(w.b))});
+ const pins=r=>Object.keys(PIN).filter(i=>f(PIN[i].net||i)==r),isD=i=>PIN[i].k=='d',isA=i=>PIN[i].k=='a',isG=i=>PIN[i].k=='g',isP=i=>PIN[i].k=='p';
+ const nm={},cn={};M.comps.forEach(c=>{cn[c.type]=(cn[c.type]||0)+1;nm[c.id]=C[c.type].n+' #'+cn[c.type]});
+ const add=(sev,w,what,why,fix)=>F.push({sev,w,what,why,fix}),load={};
+ for(const c of M.comps){
+  const N=nm[c.id],D=C[c.type],T=i=>pins(f(c.id+':'+i)),has=(i,fn)=>T(i).some(fn);
+  const miss=D.t.map((t,i)=>[t[0],i]).filter(([,i])=>!used.has(c.id+':'+i)).map(x=>x[0]);
+  if(miss.length)add('er',N,'Required terminal'+(miss.length>1?'s':'')+' not connected: '+miss.join(', ')+'.','An unconnected terminal leaves no complete current path, or leaves an input floating.','Wire every terminal, or delete the component if it is not needed.');
+  if(miss.length)continue;
+  if(c.type=='led'){
+   const a=f(c.id+':0'),k=f(c.id+':1'),rs=M.comps.filter(r=>r.type=='resistor'&&[0,1].some(i=>[a,k].includes(f(r.id+':'+i))));
+   const ns=new Set([a,k]);
+   if(!rs.length)add('er',N,'LED has no current-limiting resistor.','Above its ~2 V forward voltage an LED has almost no resistance. Driven straight from a 5 V pin it can pull far beyond the 20 mA recommended pin current (40 mA absolute max) and destroy the LED or the pin.','Add a resistor in series, about 220 Ω–1 kΩ for a 5 V pin.');
+   else{rs.forEach(r=>[0,1].forEach(i=>ns.add(f(r.id+':'+i))));
+    const R=Math.min(...rs.map(r=>r.props.ohms)),I=Math.round((5-D.vf)/R*10000)/10;
+    if(I>LIM.pin)add('er',N,'LED current is about '+I+' mA, above the 20 mA pin limit.','Estimated as (5 V − '+D.vf+' V) / '+R+' Ω, assuming a 5 V drive and a 2.0 V red LED. Exceeding 20 mA stresses the pin and the LED.','Use at least 150 Ω (220 Ω is typical).');
+    const ps=new Set();ns.forEach(n=>pins(n).filter(isD).forEach(p=>ps.add(p)));ps.forEach(p=>load[p]=(load[p]||0)+I)}
+   if(has(0,isG)&&T(1).some(i=>isD(i)||isP(i)))add('wr',N,'LED looks reversed (anode on GND).','Current flows only from anode to cathode, so the LED will stay off.','Swap the LED’s anode and cathode connections.');
+  }
+  if(c.type=='buzzer'){
+   if(has(0,i=>i=='VIN'))add('er',N,'Buzzer + is on VIN.','VIN is the unregulated 7–12 V input; this buzzer is rated for about 5 V.','Move it to a digital pin or the 5V pin.');
+   T(0).filter(isD).forEach(p=>load[p]=(load[p]||0)+D.ma);
+  }
+  if(c.type=='servo'){
+   if(has(1,isD)||has(1,isA))add('er',N,'Servo power pin is wired to a signal I/O pin.','I/O pins supply at most 20 mA (40 mA absolute max); a servo draws hundreds of mA when moving.','Power the servo from 5V or, better, an external 4.8–6 V supply with a common ground.');
+   else if(has(1,i=>i=='3V3'))add('er',N,'Servo is powered from 3.3 V.','Typical micro servos need '+D.vmin+'–'+D.vmax+' V, and the 3V3 regulator is limited to about 150 mA.','Use 5V or an external 4.8–6 V supply.');
+   else if(has(1,i=>i=='VIN'))add('er',N,'Servo is powered from VIN (7–12 V).','This exceeds the '+D.vmax+' V maximum for typical micro servos.','Use 5V or an external 4.8–6 V supply with a common ground.');
+   else if(has(1,i=>i=='5V'))add('wr',N,'Servo is drawn from the Uno 5V pin. Unverified.','Stall current of a micro servo is often ~'+D.stall+' mA (SG90-class, assumed; check your datasheet). USB supplies about '+LIM.usb+' mA total, so a stall can brown out or reset the board.','Use an external 5 V supply and tie its ground to Arduino GND.');
+   if(!has(2,isG))add('er',N,'Servo gnd is not on a GND pin.','Without a ground return the servo cannot complete its circuit and signal reference.','Connect gnd to a GND pin.');
+   if(has(0,isP))add('er',N,'Servo signal is wired to a power or ground pin.','Signal must be driven by a digital output.','Move the signal wire to a digital pin such as D9.');
+   else if(!has(0,isD)&&!has(0,isA))add('wr',N,'Servo signal does not reach a board pin. Unverified.','Signal must come from a digital output; this wiring is not recognised.','Wire the signal terminal directly to D2–D13.');
+   else if(has(0,i=>i=='D0'||i=='D1'))add('wr',N,'Servo signal is on D0/D1.','These pins are shared with the USB serial port, so uploads and Serial output can conflict.','Use D2–D13.');
+  }
+  if(c.type=='pot'){
+   if(has(1,i=>isD(i)&&!isA(i)))add('er',N,'Potentiometer wiper is on a digital-only pin.','analogRead() works only on A0–A5 on the Uno, so a digital pin cannot read the wiper position.','Move the wiper wire to A0–A5.');
+   if(has(1,isP))add('er',N,'Wiper is wired to a power/ground pin.','The ADC input would just read a fixed rail instead of the knob.','Connect the wiper to an analog pin.');
+   if(has(0,i=>i=='VIN'))add('er',N,'Potentiometer top is on VIN (7–12 V).','Analog inputs tolerate only about 5 V; the wiper could exceed this.','Use 5V or 3V3 as the reference supply.');
+   if(!has(0,isP)||!has(2,isG))add('wr',N,'Pot ends are not on a supply and GND.','Without a stable supply and ground the wiper voltage is undefined.','Wire vcc to 5V (or 3V3) and gnd to GND.');
+  }
+ }
+ const roots=new Set();used.forEach(k=>roots.add(f(k)));
+ roots.forEach(r=>{const s=new Set(pins(r).map(pn).filter(Boolean));if(s.size>1)add('er','Wires','Short circuit: '+[...s].join(' and ')+' are connected together.','Joining different supply rails or a rail to ground can overheat wires and damage the board or USB port.','Remove the wire or component path that links them.')});
+ const act=new Set();M.wires.forEach(w=>[w.a,w.b].forEach(e=>e.p&&act.add(e.p)));
+ if(act.has('D0')||act.has('D1'))add('wr','Pins D0/D1','D0/D1 are in use.','They are the hardware serial pins shared with USB; using them can break uploads and Serial Monitor.','Prefer D2–D13 for peripherals.');
+ let tot=0;Object.keys(load).forEach(p=>{const I=load[p];tot+=I;
+  if(I>LIM.abs)add('er','Pin '+p,'Estimated '+Math.round(I)+' mA on '+p+' exceeds the 40 mA absolute maximum.','Pins beyond absolute maximum can be permanently damaged.','Drive the load through a transistor or use a separate supply.');
+  else if(I>LIM.pin)add('wr','Pin '+p,'Estimated '+Math.round(I)+' mA on '+p+' exceeds the 20 mA recommended limit.','Continuous operation above 20 mA is outside the recommended range and reduces reliability.','Reduce the load or buffer it with a transistor.')});
+ if(tot>LIM.tot)add('wr','Board','Total estimated I/O current is '+Math.round(tot)+' mA (limit ~'+LIM.tot+' mA).','The ATmega328P’s VCC/GND pins limit total current across all I/O.','Spread loads out or use external drivers.');
+ if(M.comps.some(c=>c.type=='button'))add('in','Push buttons','Button logic is not modelled.','A floating input reads randomly. Firmware must use INPUT_PULLUP (wire the other side to GND) or an external pull resistor.','Wire one side to a digital pin, the other to GND, and use pinMode(pin, INPUT_PULLUP).');
+ add('in','Whole circuit','Not verified: these are rule checks on a schematic.','Passing means no known rule was violated. Firmware, wire gauge, supply quality, part tolerances and real component datasheets are not checked, so safety is not guaranteed.','Confirm with datasheets and a multimeter before powering real hardware.');
+ return F;
+}
+// ===== Model / import validation =====
+const ep=s=>s.includes('.')?{c:s.split('.')[0],t:+s.split('.')[1]}:{p:s},es=e=>e.p||e.c+'.'+e.t;
+function sanitize(o){
+ if(!o||o.v!==1||!Array.isArray(o.comps)||!Array.isArray(o.wires))throw Error('Unsupported or malformed circuit (expected version 1).');
+ if(o.comps.length>60||o.wires.length>200)throw Error('Circuit is too large.');
+ const ids=new Set(),comps=o.comps.map(c=>{if(!c||!C[c.type]||!/^c\d+$/.test(c.id)||ids.has(c.id)||![c.x,c.y].every(Number.isFinite))throw Error('Invalid component.');ids.add(c.id);
+  const m={id:c.id,type:c.type,x:Math.max(0,Math.min(600,c.x)),y:Math.max(0,Math.min(460,c.y)),r:((c.r|0)%4+4)%4,props:{}};
+  if(c.type=='resistor'){const v=+(c.props&&c.props.ohms);if(!(v>=1&&v<=1e7))throw Error('Invalid resistor value.');m.props.ohms=v}return m});
+ const chk=e=>{if(!e||typeof e!='object')throw Error('Invalid wire.');if(e.p){if(!PIN[e.p])throw Error('Unknown pin.');return{p:e.p}}
+  const c=comps.find(x=>x.id==e.c);if(!c||!(e.t>=0&&e.t<C[c.type].t.length&&Number.isInteger(e.t)))throw Error('Wire references a missing terminal.');return{c:e.c,t:e.t}};
+ return{v:1,comps,wires:o.wires.map((w,i)=>({id:'w'+(i+1),a:chk(w.a),b:chk(w.b)}))};
+}
+const mk=(cs,ws)=>({v:1,comps:cs.map(([id,type,x,y,ohms])=>({id,type,x,y,r:0,props:type=='resistor'?{ohms:ohms||220}:{}})),wires:ws.map(([a,b],i)=>({id:'w'+(i+1),a:ep(a),b:ep(b)}))});
+const EX={'Example: Blink LED (valid)':()=>mk([['c1','resistor',200,270],['c2','led',380,270]],[['D13','c1.0'],['c1.1','c2.0'],['c2.1','GND1']]),
+ 'Example: LED without resistor (error)':()=>mk([['c1','led',300,270]],[['D13','c1.0'],['c1.1','GND1']]),
+ 'Example: Pot on digital pin (error)':()=>mk([['c1','pot',300,290]],[['5V','c1.0'],['D5','c1.1'],['GND2','c1.2']]),
+ 'Example: Servo on Uno 5V (warning)':()=>mk([['c1','servo',300,300]],[['D9','c1.0'],['5V','c1.1'],['GND1','c1.2']])};
+// ===== App state =====
+let M,hist,hi,uid,sel=null,pend=null,drag=null,mouse=null;const $=s=>document.querySelector(s),sv=$('#sv');
+const msg=t=>$('#st').textContent=t,comp=id=>M.comps.find(c=>c.id==id);
+const rot=(x,y,r)=>{for(let i=0;i<r;i++)[x,y]=[-y,x];return[x,y]};
+const tp=(c,i)=>{const t=C[c.type].t[i],[a,b]=rot(t[1],t[2],c.r);return[c.x+a,c.y+b]};
+const pos=e=>e.p?[PIN[e.p].x,PIN[e.p].y]:tp(comp(e.c),e.t);
+function commit(){hist=hist.slice(0,hi+1);hist.push(JSON.stringify(M));hi++;if(hist.length>100){hist.shift();hi--}refresh()}
+function load(m){M=m;hist=[JSON.stringify(m)];hi=0;sel=pend=null;uid=1+Math.max(0,...m.comps.concat(m.wires).map(x=>+x.id.slice(1)));refresh()}
+function step(d){const j=hi+d;if(j<0||j>=hist.length)return;hi=j;M=JSON.parse(hist[hi]);sel=pend=null;refresh()}
+function refresh(){draw();panel();vpanel();$('#un').disabled=hi<1;$('#re').disabled=hi>=hist.length-1}
+function draw(){
+ let h='<rect x="20" y="10" width="560" height="150" rx="8" fill="var(--bd)" opacity=".5"/><text x="300" y="92" class="bl">ARDUINO UNO R3</text>';
+ M.wires.forEach(w=>{const[a,b]=[pos(w.a),pos(w.b)],dy=Math.max(40,Math.abs(a[1]-b[1])/2);h+=`<path class="w${sel&&sel.k=='w'&&sel.id==w.id?' sel':''}" data-w="${w.id}" d="M${a} C${a[0]},${a[1]+dy} ${b[0]},${b[1]+dy} ${b}"/>`});
+ if(pend&&mouse){const a=pos(ep(pend));h+=`<path class="w" style="opacity:.5;pointer-events:none" stroke-dasharray="5" d="M${a} L${mouse}"/>`}
+ for(const id in PIN){const p=PIN[id],on=M.wires.some(w=>w.a.p==id||w.b.p==id);h+=`<circle class="pin ${p.k}${on?' on':''}${pend==id?' pd':''}" data-e="${id}" cx="${p.x}" cy="${p.y}" r="7"/><text class="lb" x="${p.x}" y="${p.top?22:152}">${p.l}</text>`}
+ M.comps.forEach(c=>{const D=C[c.type],o=c.r%2,w=o?D.h:D.w,hh=o?D.w:D.h;
+  h+=`<rect class="cb${sel&&sel.k=='c'&&sel.id==c.id?' sel':''}" data-c="${c.id}" x="${c.x-w/2}" y="${c.y-hh/2}" width="${w}" height="${hh}" rx="5"/><text class="lb" style="font-size:10px" x="${c.x}" y="${c.y+3}">${D.n}${c.type=='resistor'?' '+c.props.ohms+'Ω':''}</text>`;
+  D.t.forEach((t,i)=>{const[x,y]=tp(c,i);h+=`<circle class="t${pend==c.id+'.'+i?' pd':''}" data-e="${c.id}.${i}" cx="${x}" cy="${y}" r="6"/><text class="lb" x="${x}" y="${y-9}">${t[0]}</text>`})});
+ if(!M.comps.length)h+='<text class="hint" x="300" y="300">Empty workspace</text><text class="hint" x="300" y="324">Add a component on the left, click its terminal, then a board pin.</text><text class="hint" x="300" y="348">Or load an example from the toolbar.</text>';
+ sv.innerHTML=h}
+function panel(){const c=sel&&sel.k=='c'&&comp(sel.id);
+ if(!c){$('#pr').innerHTML='<span class="mu">Select a component to edit it. Click a wire to select it; Delete removes it.</span>';return}
+ $('#pr').innerHTML=`<b>${C[c.type].n}</b>`+(c.type=='resistor'?`<p><label>Ohms <input id="oh" type="number" min="1" max="10000000" value="${c.props.ohms}"></label></p>`:'')+'<p><button id="ro">Rotate (R)</button> <button id="rm">Remove (Del)</button></p>';
+ $('#ro').onclick=rotate;$('#rm').onclick=del;const o=$('#oh');if(o)o.onchange=()=>{const v=+o.value;if(v>=1&&v<=1e7){c.props.ohms=v;commit()}else{o.value=c.props.ohms;msg('Resistance must be 1 Ω–10 MΩ.')}}}
+function vpanel(){const F=validate(M),o={er:0,wr:1,in:2},tg={er:'ERROR',wr:'WARNING',in:'INFO'};F.sort((a,b)=>o[a.sev]-o[b.sev]);
+ const n=s=>F.filter(f=>f.sev==s).length;$('#vh').textContent=`Validation — ${n('er')} errors, ${n('wr')} warnings`;
+ $('#vl').innerHTML=(M.comps.length?'':'<p class="mu">Add components to see live checks.</p>')+F.map(f=>`<div class="f ${f.sev}"><div class="h"><span>${tg[f.sev]}</span>${f.what}</div><p><b>Affected:</b> ${f.w}</p><p><b>Why:</b> ${f.why}</p><p><b>Fix:</b> ${f.fix}</p></div>`).join('');
+ const act=new Set();M.wires.forEach(w=>[w.a,w.b].forEach(e=>e.p&&act.add(e.p)));
+ $('#po').innerHTML=Object.keys(PIN).map(id=>{const p=PIN[id],t=p.k=='d'?(p.pwm?'PWM ':'')+(p.ser?'serial':'digital'):p.k=='a'?'analog/digital':p.k=='g'?'ground':id=='5V'?'5 V':id=='3V3'?'3.3 V':'7–12 V in';return`<span class="chip${act.has(id)?' on':''}">${p.l} · ${t}</span>`}).join('')}
+function rotate(){const c=sel&&sel.k=='c'&&comp(sel.id);if(c){c.r=(c.r+1)%4;commit()}}
+function del(){if(!sel)return;if(sel.k=='c'){M.comps=M.comps.filter(c=>c.id!=sel.id);M.wires=M.wires.filter(w=>w.a.c!=sel.id&&w.b.c!=sel.id)}else M.wires=M.wires.filter(w=>w.id!=sel.id);sel=null;commit()}
+function addWire(a,b){if(!a.includes('.')&&!b.includes('.')){msg('Connect at least one component terminal.');return}
+ if(M.wires.some(w=>[es(w.a),es(w.b)].sort()+''==[a,b].sort()+'')){msg('Those are already wired.');return}
+ M.wires.push({id:'w'+uid++,a:ep(a),b:ep(b)});commit()}
+const pt=e=>{const p=sv.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(sv.getScreenCTM().inverse());return[q.x,q.y]};
+sv.onpointerdown=e=>{const t=e.target,E=t.dataset.e;
+ if(E){if(!pend)pend=E;else if(pend!=E){addWire(pend,E);pend=null}else pend=null;draw();return}
+ if(t.dataset.c){sel={k:'c',id:t.dataset.c};const c=comp(sel.id),p=pt(e);drag={c,dx:c.x-p[0],dy:c.y-p[1],mv:0};sv.setPointerCapture(e.pointerId)}
+ else if(t.dataset.w)sel={k:'w',id:t.dataset.w};else{sel=null;pend=null}
+ draw();panel()};
+sv.onpointermove=e=>{const p=pt(e);if(drag){drag.c.x=Math.max(20,Math.min(580,Math.round((p[0]+drag.dx)/10)*10));drag.c.y=Math.max(170,Math.min(450,Math.round((p[1]+drag.dy)/10)*10));drag.mv=1;draw()}else if(pend){mouse=p;draw()}};
+sv.onpointerup=()=>{if(drag&&drag.mv)commit();drag=null};
+document.onkeydown=e=>{if(/INPUT|SELECT/.test(e.target.tagName))return;const k=e.key.toLowerCase();
+ if((e.ctrlKey||e.metaKey)&&k=='z'){e.preventDefault();step(e.shiftKey?1:-1)}else if((e.ctrlKey||e.metaKey)&&k=='y'){e.preventDefault();step(1)}
+ else if(k=='delete'||k=='backspace')del();else if(k=='r')rotate();else if(k=='escape'){pend=null;draw()}
+ else if(sel&&sel.k=='c'&&k.startsWith('arrow')){e.preventDefault();const c=comp(sel.id);c.x+=({arrowleft:-10,arrowright:10}[k]||0);c.y+=({arrowup:-10,arrowdown:10}[k]||0);commit()}};
+$('#lib').innerHTML=Object.keys(C).map(k=>`<button data-k="${k}">+ ${C[k].n}</button>`).join('');
+$('#lib').onclick=e=>{const k=e.target.dataset.k;if(!k)return;const n=M.comps.length;M.comps.push({id:'c'+uid++,type:k,x:150+(n%5)*80,y:240+Math.floor(n/5)*70,r:0,props:C[k].p?{...C[k].p}:{}});sel={k:'c',id:M.comps[n].id};commit()};
+$('#ex').innerHTML='<option value="">Load example…</option>'+Object.keys(EX).map(k=>`<option>${k}</option>`).join('');
+$('#ex').onchange=e=>{if(EX[e.target.value]){load(EX[e.target.value]());msg('Loaded “'+e.target.value+'”.')}e.target.value=''};
+$('#un').onclick=()=>step(-1);$('#re').onclick=()=>step(1);
+$('#exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(M,null,1)],{type:'application/json'}));a.download='pinplan-circuit.json';a.click();msg('Exported JSON (version 1).')};
+$('#imp').onclick=()=>$('#fi').click();
+$('#fi').onchange=e=>{const fl=e.target.files[0];if(!fl)return;if(fl.size>200000){msg('File too large (limit 200 KB).');return}
+ fl.text().then(t=>{try{load(sanitize(JSON.parse(t)));msg('Imported '+fl.name+'.')}catch(x){msg('Import failed: '+x.message)}});e.target.value=''};
+$('#sh').onclick=()=>{try{const h=btoa(unescape(encodeURIComponent(JSON.stringify(M)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+ if(h.length>8000){msg('Circuit too large for a URL; use Export JSON.');return}
+ location.hash='c='+h;msg('Share link is in the address bar. It contains only circuit data.');navigator.clipboard&&navigator.clipboard.writeText(location.href).catch(()=>{})}catch(x){msg('Could not create link.')}};
+function fromHash(){const m=location.hash.match(/^#c=([\w-]{1,20000})$/);if(!m)return 0;try{const b=m[1].replace(/-/g,'+').replace(/_/g,'/');load(sanitize(JSON.parse(decodeURIComponent(escape(atob(b+'==='.slice((b.length+3)%4)))))));return 1}catch(x){msg('Shared link was invalid and was ignored.');return 0}}
+if(!fromHash())load({v:1,comps:[],wires:[]});
+</script></body></html>
